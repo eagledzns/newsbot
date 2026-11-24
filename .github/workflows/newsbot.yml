@@ -19,7 +19,7 @@ jobs:
       - run: pip install -r requirements.txt
       - run: python bot.py --once
         env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN || secrets.BREAKDOWN }}
           TELEGRAM_CHAT_ID:   "-1004429348503"   # "News update" group (not secret)
           FB_APP_ID:          ${{ secrets.FB_APP_ID }}
           FB_APP_SECRET:      ${{ secrets.FB_APP_SECRET }}
