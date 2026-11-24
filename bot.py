@@ -291,7 +291,7 @@ def get_facebook_page(name, page_id, token, edge="posts"):
 
 
 def get_own_posts():
-    """Your own Pages (Tizzar, Tidbid...) via permanent page tokens in
+    """Your own Facebook Pages (see OWN_PAGES) via permanent page tokens in
     FB_PAGE_TOKENS="<page_id>:<token>,...". Used to flag stories you've
     already covered, not to score them."""
     tokens_by_id = dict(p.split(":", 1) for p in

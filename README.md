@@ -1,100 +1,114 @@
-# Viral News Scout (Telegram)
+# Viral News Scout
 
-Finds the most viral and engaging news for Tidbid / Tizzar and posts it to your
-Telegram group with a **Viral score (0–10)**. It's free and uses no paid APIs.
+An automated news-monitoring bot that detects high-virality stories across
+Bangladeshi and international media and delivers ranked alerts to a Telegram
+channel or group. Each alert carries a **Viral Score (0–10)** built from coverage,
+audience demand, video views and social engagement.
+
+It runs entirely on free, public data sources and free GitHub Actions, with no paid APIs.
 
 ---
 
-## How to run it (on your PC)
+## Features
 
-### Step 1: Make the Telegram bot (2 min)
-1. In Telegram, search **@BotFather** → send `/newbot` → pick a name → copy the
-   **token** it gives you (looks like `8123456789:AAH...`).
-2. Add your new bot to your group (e.g. *No Sleep Curation*) and make it **admin**.
+- **Multi-source monitoring**: 25+ news outlets via RSS, Google News site search and
+  website parsing, organised into weighted tiers (S / A / B / International).
+- **Two editorial lanes**: 🇧🇩 Bangladesh and 🌍 International, each with its own
+  posting quota so local and world news never crowd each other out.
+- **Virality scoring** from independent signals:
 
-### Step 2: Get the group's chat ID
-1. Send any message in the group (e.g. `hi`).
-2. Open this in your browser (put your token in):
-   `https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates`
-3. Find `"chat":{"id":-100xxxxxxxxxx` and copy that number, including the minus sign.
+  | Signal | Source | What it measures |
+  |---|---|---|
+  | Coverage | Tiered outlet list | How many outlets run the story, weighted by tier |
+  | Prominence | Google News (Bangladesh + World) | Editorial / algorithmic placement |
+  | Search demand | Google Trends (BD, US, UK, IN, PK, AE, SA, TR) | Search volume and number of countries trending |
+  | Video views | Public YouTube feeds of major TV and news channels | Views per hour |
+  | Social engagement | Meta Graph API (optional) | Reactions, comments, shares per hour |
+  | Telegram reach | Public channel previews | Views per hour |
+  | Momentum | Previous scan | New outlets picking the story up |
+  | Freshness | Publish time | Exponential decay (5-hour half-life) |
 
-### Step 3: Setup
-Double-click **`1-setup.bat`**. It installs the requirements and opens `.env` in Notepad.
-Paste your token and chat ID, then save:
+- **Story clustering**: groups the same story across outlets and languages
+  (Bangla and English), so each event is reported once.
+- **Deduplication**: remembers posted stories for 48 hours and skips near-identical angles.
+- **Coverage check (optional)**: flags stories your own Facebook Pages have
+  already published, with that post's engagement.
+- **Noise filtering**: ignores bulletins, live streams and roundup posts.
+
+---
+
+## Quick start (local)
+
+Requirements: Python 3.10+ and a Telegram bot token from [@BotFather](https://t.me/BotFather).
+
+```bash
+pip install -r requirements.txt
+cp .env.example .env        # then fill in TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID
+python bot.py --dry-run     # preview the ranking; posts nothing
+python bot.py --loop 5      # scan and post every 5 minutes
 ```
-TELEGRAM_BOT_TOKEN=8123456789:AAH...
-TELEGRAM_CHAT_ID=-1001234567890
-```
 
-### Step 4: Preview, then start
-- Double-click **`2-preview.bat`**. It shows the ranking and the posts it *would* send,
-  without posting anything.
-- Double-click **`3-start-bot.bat`**. The bot is live: it scans every 5 minutes and posts
-  stories that score ≥ 6. Keep the window open; close it to stop.
+On Windows you can use the included scripts instead: `1-setup.bat`, `2-preview.bat`,
+`3-start-bot.bat`.
 
-> PC must stay on for this. To run 24/7 with your PC off, use the GitHub option below.
+**Finding the chat ID:** add the bot to your group, send a message there, then open
+`https://api.telegram.org/bot<TOKEN>/getUpdates` and copy the `chat.id` value
+(it starts with `-100`).
 
 ---
 
-## Run 24/7 for free on GitHub (optional)
-1. Make a **private** repo on github.com and upload this whole folder
-   (but NOT the `.env` file).
-2. Repo → **Settings → Secrets and variables → Actions → New repository secret**:
-   add `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` (plus `FB_PAGE_TOKEN` if you have it).
-3. **Actions** tab → enable → *viral-news-bot* → **Run workflow**.
-   After that, it runs every 5 minutes automatically.
+## Deploy on GitHub Actions (24/7, free)
+
+The included workflow (`.github/workflows/newsbot.yml`) runs a scan every 5 minutes
+and commits the bot's memory (`state.json`) back to the repository.
+
+1. Fork or push this repository to GitHub.
+2. Under **Settings → Secrets and variables → Actions**, add:
+   - `TELEGRAM_BOT_TOKEN`: your bot token
+   - `FB_PAGE_TOKENS` *(optional)*: Page tokens for the coverage check
+3. Set your `TELEGRAM_CHAT_ID` in the workflow file.
+4. Open the **Actions** tab and run **viral-news-bot** once to start it.
+
+> Scheduled runs on GitHub are best-effort and can occasionally start a few minutes late.
 
 ---
 
-## Step 5 (optional): Facebook pages: Cablgram, Nutshell, Bongo Wiki…
+## Optional: Facebook integration
 
-Facebook doesn't let anyone read pages without a login, so the bot uses Meta's
-**official Graph API**. It's free and needs one token:
+The bot uses Meta's official **Graph API** only.
 
-1. Go to **developers.facebook.com** → *My Apps* → **Create App** → type *Business*.
-2. Open **Graph API Explorer** (Tools menu) → pick your app → *Generate Access Token*.
-3. Paste the token as `FB_PAGE_TOKEN=` in `.env`.
-
-What works with that token:
-- ✅ **Pages you manage** (e.g. Tidbid, Tizzar) work immediately.
-- ⏳ **Other pages** (Cablgram, Bongo Wiki, BengaliVerse, Sozoo…) need Meta to approve
-  the **"Page Public Content Access"** feature for your app (*App Review* →
-  request it; needs business verification; free). Until then the bot just skips
-  them and logs a message; nothing breaks.
-
-Tokens from the Explorer expire in ~1–2 hours. For a long-lasting one, exchange it
-for a *long-lived token* (60 days) with the Access Token Debugger
-(developers.facebook.com/tools/debug/accesstoken → "Extend Access Token").
-
-When a page post matches a story, it counts as that outlet covering it (at its
-tier) **and** adds the post's reactions + comments + shares per hour to the score.
-
-Facebook handles in `config.py → SOCIAL_PAGES`: Cablgram's and Nutshell's IDs are
-verified. The others are guesses, so open each page and fix the handle if needed.
-
-### Already working without Facebook
-- **Nutshell Today** articles are read from **nutshelltoday.com** (S tier).
-- **Science Bee** from its website and its public Telegram channel (with view counts).
-- **Cablgram's website** only shows image cards with no headline text, so it needs the
-  Facebook token above.
+- **Pages you manage**: run `fb_token.py` to exchange a short-lived Graph API Explorer
+  token for permanent Page tokens (needs `FB_APP_ID`, `FB_APP_SECRET`, `FB_SHORT_TOKEN`
+  in `.env`). List the pages to watch in `OWN_PAGES` in `config.py`.
+- **Third-party pages**: listed in `SOCIAL_PAGES`. These require Meta's
+  *Page Public Content Access* feature (App Review with business verification).
+  Until it is granted, they are skipped automatically.
 
 ---
 
-## How the score works
+## Configuration
 
-| Signal | Source (free) | Measures |
-|---|---|---|
-| Coverage | Your S/A/B/International list (RSS, Google News, websites, FB pages) | How many outlets run it; S = 1.5×, A = 1×, B = 0.7× |
-| Google News | BD top stories | Prominence |
-| Trend | Google Trends BD | Search volume |
-| YouTube views | Jamuna, Independent, DBC, Maasranga, Somoy, Ekattor, Channel 24 | Views per hour |
-| FB pages | Graph API (Step 5) | Engagement per hour |
-| Telegram | Public channels | Views per hour |
-| Momentum | vs. last scan | New outlets picking it up |
-| Topic | Keyword list | Crime, celebs, cricket, Gaza… |
-| Freshness | Article time | Score halves every 5 h |
+All tuning lives in `config.py`:
 
-## Tuning: edit `config.py`
-- `MIN_SCORE = 5.0`: raise for fewer, bigger stories; lower for more.
-- `MAX_POSTS_PER_RUN`, `HALF_LIFE_H`, `TIER_WEIGHT`, the `W_*` weights.
-- Add or remove sources in `SOURCES`, `SOCIAL_PAGES`, `YOUTUBE_CHANNELS`.
+| Setting | Purpose |
+|---|---|
+| `SOURCES`, `TIER_WEIGHT` | News outlets and how much each tier counts |
+| `YOUTUBE_CHANNELS` | Channels used for the view-velocity signal |
+| `GLOBAL_TRENDS_GEOS` | Countries checked on Google Trends |
+| `MIN_SCORE`, `MAX_POSTS_PER_RUN` | Bangladesh lane threshold and quota |
+| `INTL_MIN_SCORE`, `INTL_MAX_POSTS_PER_RUN` | International lane threshold and quota |
+| `HALF_LIFE_H`, `W_*` | Freshness decay and signal weights |
+| `VIRAL_KEYWORDS`, `JUNK_TITLES` | Topic boosts and headlines to ignore |
+
+---
+
+## Security
+
+- Credentials are read from environment variables or GitHub encrypted secrets only.
+- `.env` is excluded by `.gitignore` and must never be committed.
+- Token helper scripts never print token values.
+
+## License
+
+For private and editorial use. News content belongs to its respective publishers;
+the bot shares headlines and links only.

@@ -112,7 +112,7 @@ SOCIAL_PAGES = [
     {"name": "Get the Fame",        "tier": "B", "fb": "getthefame"},
 ]
 # Your OWN Pages (read with permanent tokens from FB_PAGE_TOKENS, made by
-# fb_token.py). Alerts get "✅ Already on Tizzar" when you've covered a story.
+# fb_token.py). Alerts get "✅ Already on <Page>" when you've covered a story.
 OWN_PAGES = {
     "Tizzar":                      "713854771821351",
     "Tidbid Today":                "590221930839985",
