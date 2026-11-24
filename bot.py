@@ -250,17 +250,22 @@ def get_telegram(name, channel):
     return out
 
 
-def get_facebook_page(name, page_id, token):
+def get_facebook_page(name, page_id, token, edge="posts"):
     """Official Graph API. Works for pages you manage; other pages need
     Meta's (free) 'Page Public Content Access' approval on your app."""
-    try:
-        r = requests.get(f"https://graph.facebook.com/v21.0/{page_id}/posts", timeout=25, params={
-            "fields": "message,created_time,permalink_url,shares,"
-                      "reactions.summary(total_count).limit(0),comments.summary(total_count).limit(0)",
-            "limit": 20, "access_token": token}).json()
-    except Exception as e:
-        log(f"[skip] facebook {name}: {e}")
-        return []
+    base = "message,created_time,permalink_url,shares"
+    # richest field set first; fall back if a permission (e.g. comments) is missing
+    for fields in (base + ",reactions.summary(total_count).limit(0),comments.summary(total_count).limit(0)",
+                   base + ",reactions.summary(total_count).limit(0)",
+                   base):
+        try:
+            r = requests.get(f"https://graph.facebook.com/v21.0/{page_id}/{edge}", timeout=25,
+                             params={"fields": fields, "limit": 20, "access_token": token}).json()
+        except Exception as e:
+            log(f"[skip] facebook {name}: {e}")
+            return []
+        if r.get("error", {}).get("code") != 10:
+            break
     if "error" in r:
         log(f"[skip] facebook {name}: {r['error'].get('message', '')[:120]}")
         return []
@@ -276,6 +281,22 @@ def get_facebook_page(name, page_id, token):
                + 2 * (p.get("shares") or {}).get("count", 0))
         out.append({"source": name, "kind": "fb", "title": msg[:160], "eng": eng,
                     "link": p.get("permalink_url", ""), "ts": t, "vph": eng / age_h})
+    return out
+
+
+def get_own_posts():
+    """Your own Pages (Tizzar, Tidbid...) via permanent page tokens in
+    FB_PAGE_TOKENS="<page_id>:<token>,...". Used to flag stories you've
+    already covered, not to score them."""
+    tokens_by_id = dict(p.split(":", 1) for p in
+                        os.environ.get("FB_PAGE_TOKENS", "").split(",") if ":" in p)
+    out = []
+    for name, pid in C.OWN_PAGES.items():
+        tok = tokens_by_id.get(pid)
+        if tok:
+            for p in get_facebook_page(name, pid, tok, edge="published_posts"):
+                p["own"] = True
+                out.append(p)
     return out
 
 
@@ -395,6 +416,8 @@ def render(c):
         sig.append(f"✈️ {fmt_num(c['tg_vph'])} Telegram views/hr")
     if c["fb_eph"] >= 1:
         sig.append(f"💬 {fmt_num(c['fb_eph'])} FB page engagements/hr")
+    for p in c.get("own", [])[:2]:
+        sig.append(f"✅ Already on {e(p['source'])} ({fmt_num(p.get('eng', 0))} engagements)")
     if c.get("fb_eng"):
         sig.append(f"👍 {fmt_num(c['fb_eng'])} FB engagements")
     seen, others = {lead.get("outlet") or lead["source"]}, []
@@ -446,14 +469,16 @@ def run(dry=False, top=15):
         news_jobs = [ex.submit(get_source, s, page_cache) for s in C.SOURCES]
         gn_job, tr_job = ex.submit(get_google_news), ex.submit(get_trends)
         yt_job, so_job = ex.submit(get_youtube), ex.submit(get_social)
+        own_job = ex.submit(get_own_posts)
         articles = [a for j in news_jobs for a in j.result()] + gn_job.result()
         trends, social = tr_job.result(), so_job.result()
         videos = yt_job.result() + social
-    for v in videos:
+        own = own_job.result()
+    for v in videos + own:
         v["toks"] = tokens(v["title"])
     n = lambda k: sum(1 for v in videos if v["kind"] == k)
     log(f"collected {len(articles)} articles, {len(trends)} trends, {n('yt')} YouTube videos, "
-        f"{n('tg')} Telegram posts, {n('fb')} Facebook page posts")
+        f"{n('tg')} Telegram posts, {n('fb')} Facebook page posts, {len(own)} own-page posts")
 
     # page posts always join clustering (they are "outlets" too); videos only when hot
     hot = [v for v in videos if v["kind"] != "yt" or v["vph"] >= 200]
@@ -461,6 +486,7 @@ def run(dry=False, top=15):
     prev_cov = state.get("coverage", {})
     for c in clusters:
         score(c, trends, videos, prev_cov)
+        c["own"] = [p for p in own if overlap(p["toks"], c["toks"]) >= 0.5]
     clusters.sort(key=lambda c: c["score"], reverse=True)
 
     fb_id, fb_secret = os.environ.get("FB_APP_ID"), os.environ.get("FB_APP_SECRET")

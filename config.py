@@ -96,6 +96,14 @@ SOCIAL_PAGES = [
     {"name": "Blinkworthy",         "tier": "B", "fb": "blinkworthy"},
     {"name": "Get the Fame",        "tier": "B", "fb": "getthefame"},
 ]
+# Your OWN Pages (read with permanent tokens from FB_PAGE_TOKENS, made by
+# fb_token.py). Alerts get "✅ Already on Tizzar" when you've covered a story.
+OWN_PAGES = {
+    "Tizzar":                      "713854771821351",
+    "Tidbid Today":                "590221930839985",
+    "The Breakdown Media Network": "899049026630545",
+}
+
 W_TG       = 1.0   # x log10(1 + Telegram views per hour)
 W_FB_PAGES = 1.5   # x log10(1 + FB page reactions+comments+2*shares per hour)
 
