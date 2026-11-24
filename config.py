@@ -59,7 +59,15 @@ OUTLET_ALIASES = {
 GOOGLE_NEWS_FEEDS = [
     "https://news.google.com/rss?hl=bn&gl=BD&ceid=BD:bn",
     "https://news.google.com/rss?hl=en-BD&gl=BD&ceid=BD:en",
+    # world top stories = global prominence for international news
+    "https://news.google.com/rss/headlines/section/topic/WORLD?hl=en-US&gl=US&ceid=US:en",
 ]
+
+# Google Trends in other countries: a story trending in several countries is
+# globally viral. Search volume + number of countries both boost the score.
+GLOBAL_TRENDS_GEOS = ["US", "GB", "IN", "PK", "AE", "SA", "TR"]
+W_TREND_COUNTRIES = 0.6    # bonus per extra country trending it (capped)
+TREND_COUNTRIES_CAP = 2.0
 
 # Google Trends trending searches in Bangladesh (approx search volume = demand)
 GOOGLE_TRENDS_FEED = "https://trends.google.com/trending/rss?geo=BD"
@@ -75,6 +83,13 @@ YOUTUBE_CHANNELS = {
     "Channel 24":      "UCHLqIOMPk20w-6cFgkA90jw",
     "Prothom Alo":     "UChxZgRBNYXWul3c1eGQKO3A",
     "The Daily Star":  "UC5-BAboL0IOByHnlVShQRQA",
+    # international
+    "Al Jazeera":      "UCNye-wNBqNL5ZzHSJj3l8Bg",
+    "BBC News":        "UC16niRr50-MSBwiO3YDb3RA",
+    "TRT World":       "UC7fWeaHhqgM4Ry-RMpM2YYw",
+    "Middle East Eye": "UCR0fZh5SBxxMNYdg0VzRFkg",
+    "NDTV":            "UCZFMm1mMw0F81Z37aaEzTUA",
+    "Anadolu":         "UCph-M7aQqpi1fW0BQwn7XUA",
 }
 
 # ---- Byte-sized media (Facebook-first pages) ------------------------------
@@ -126,10 +141,21 @@ SCALE        = 8.0   # 0-10 squashing; higher = harder to reach 10
 
 # ---- Posting rules --------------------------------------------------------
 MIN_SCORE         = 5.0   # only post stories scoring at least this (0-10)
-MAX_POSTS_PER_RUN = 5
+MAX_POSTS_PER_RUN = 3     # Bangladesh stories per run (runs every 10 min)
+# International lane: world stories get their own slots so local news
+# can't crowd them out.
+INTL_MIN_SCORE         = 5.0
+INTL_MAX_POSTS_PER_RUN = 2
 MAX_AGE_HOURS     = 24
 REPOST_GAP_HOURS  = 48    # don't post the same story again within this window
 DEDUP_OVERLAP     = 0.35  # lower = stricter "same topic" filter (0.3-0.6)
+
+# Headlines to ignore (bulletins, roundups, live streams). Regex, case-insensitive.
+JUNK_TITLES = [
+    r"daily news brief", r"morning update", r"evening update", r"news ?(update|bulletin)",
+    r"^live\b", r"\blive stream", r"headlines? (at|of) ", r"top \d+ news", r"ইপেপার",
+    r"সংবাদ শিরোনাম", r"শিরোনাম", r"বুলেটিন", r"লাইভ",
+]
 
 VIRAL_KEYWORDS = [
     "ভাইরাল", "চাঞ্চল্য", "হত্যা", "খুন", "গ্রেপ্তার", "আটক", "ধর্ষণ", "দুর্ঘটনা",

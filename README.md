@@ -29,7 +29,7 @@ TELEGRAM_CHAT_ID=-1001234567890
 ### Step 4: Preview, then start
 - Double-click **`2-preview.bat`**. It shows the ranking and the posts it *would* send,
   without posting anything.
-- Double-click **`3-start-bot.bat`**. The bot is live: it scans every 20 minutes and posts
+- Double-click **`3-start-bot.bat`**. The bot is live: it scans every 10 minutes and posts
   stories that score ≥ 5. Keep the window open; close it to stop.
 
 > PC must stay on for this. To run 24/7 with your PC off, use the GitHub option below.
@@ -42,7 +42,7 @@ TELEGRAM_CHAT_ID=-1001234567890
 2. Repo → **Settings → Secrets and variables → Actions → New repository secret**:
    add `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` (plus `FB_PAGE_TOKEN` if you have it).
 3. **Actions** tab → enable → *viral-news-bot* → **Run workflow**.
-   After that, it runs every 20 minutes automatically.
+   After that, it runs every 10 minutes automatically.
 
 ---
 

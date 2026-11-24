@@ -25,6 +25,7 @@ UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.3
                     "(KHTML, like Gecko) Chrome/130 Safari/537.36",
       "Accept-Language": "en-US,en;q=0.9,bn;q=0.8"}
 NOW = time.time()
+JUNK = re.compile("|".join(C.JUNK_TITLES), re.I)
 
 
 def load_env():
@@ -107,7 +108,7 @@ def get_feed(name, url):
                 if name == "Google News":
                     o = m.group(2).strip()
                     it["outlet"] = C.OUTLET_ALIASES.get(o, o)
-        if len(tokens(it["title"])) < 3:   # drop "ePaper", "Live", archive pages
+        if len(tokens(it["title"])) < 3 or JUNK.search(it["title"]):  # ePaper, bulletins...
             continue
         out.append(it)
     return out
@@ -183,18 +184,21 @@ def parse_traffic(s):
 
 
 def get_trends():
-    try:
-        f = feedparser.parse(fetch(C.GOOGLE_TRENDS_FEED).content)
-    except Exception as e:
-        log(f"[skip] trends: {e}")
-        return []
+    """Google Trends: Bangladesh plus GLOBAL_TRENDS_GEOS countries."""
     out = []
-    for e in f.entries:
-        news_titles = e.get("ht_news_item_title", "")
-        out.append({"term": e.get("title", "").strip(),
-                    "traffic": parse_traffic(e.get("ht_approx_traffic")),
-                    "toks": tokens(e.get("title", "")) | tokens(news_titles),
-                    "url": e.get("ht_news_item_url", "")})
+    for geo in ["BD"] + list(C.GLOBAL_TRENDS_GEOS):
+        url = re.sub(r"geo=\w+", f"geo={geo}", C.GOOGLE_TRENDS_FEED)
+        try:
+            f = feedparser.parse(fetch(url).content)
+        except Exception as e:
+            log(f"[skip] trends {geo}: {e}")
+            continue
+        for e in f.entries:
+            news_titles = e.get("ht_news_item_title", "")
+            out.append({"term": e.get("title", "").strip(), "geo": geo,
+                        "traffic": parse_traffic(e.get("ht_approx_traffic")),
+                        "toks": tokens(e.get("title", "")) | tokens(news_titles),
+                        "url": e.get("ht_news_item_url", "")})
     return out
 
 
@@ -211,6 +215,8 @@ def get_youtube():
             t = ts(e)
             age_h = max((NOW - t) / 3600, 0.5)
             if age_h > C.MAX_AGE_HOURS:
+                continue
+            if JUNK.search(e.get("title", "")):
                 continue
             views = int((e.get("media_statistics") or {}).get("views", 0) or 0)
             vids.append({"source": f"YouTube · {h}", "kind": "yt",
@@ -355,10 +361,12 @@ def score(c, trends, videos, prev_cov):
     wcov = sum(tier_w(o) for o in outlets)
     links = {a["link"] for a in c["items"]}
 
-    trend = max((t for t in trends
-                 if t["url"] in links or overlap(t["toks"], c["toks"]) >= 0.5
-                 or (t["term"] and t["term"].lower() in " ".join(a["title"].lower() for a in news))),
-                key=lambda t: t["traffic"], default=None)
+    alltext = " ".join(a["title"].lower() for a in news)
+    matched = [t for t in trends
+               if t["url"] in links or overlap(t["toks"], c["toks"]) >= 0.5
+               or (len(t["term"]) > 3 and t["term"].lower() in alltext)]
+    trend = max(matched, key=lambda t: t["traffic"], default=None)
+    countries = sorted({t["geo"] for t in matched})
     def rate(kind):
         return sum(v["vph"] for v in videos if v["kind"] == kind and
                    (v in c["items"] or overlap(v["toks"], c["toks"]) >= 0.5))
@@ -370,6 +378,7 @@ def score(c, trends, videos, prev_cov):
         "coverage": C.W_COVERAGE * math.log2(1 + wcov),
         "gnews": C.W_GNEWS if in_gnews else 0,
         "trend": C.W_TREND * math.log10(max(trend["traffic"], 10)) if trend else 0,
+        "countries": min(C.TREND_COUNTRIES_CAP, C.W_TREND_COUNTRIES * max(0, len(countries) - 1)),
         "youtube": C.W_YT * math.log10(1 + yt_vph),
         "telegram": C.W_TG * math.log10(1 + tg_vph),
         "fb_pages": C.W_FB_PAGES * math.log10(1 + fb_eph),
@@ -378,7 +387,12 @@ def score(c, trends, videos, prev_cov):
         "fb": 0.0,
     }
     tiers = {TIER.get(o) for o in outlets}
+    n_int = sum(1 for o in outlets if TIER.get(o) == "INT")
+    n_bd = sum(1 for o in outlets if TIER.get(o) in ("S", "A", "B"))
+    # international = mostly covered by world outlets / trending outside BD
+    intl = (n_int > 0 and n_int >= n_bd) or (n_bd == 0 and any(g != "BD" for g in countries))
     c.update(cov=cov, tiers="/".join(t for t in ("S", "A", "B", "INT") if t in tiers),
+             intl=intl, countries=countries,
              in_gnews=in_gnews, trend=trend, yt_vph=yt_vph, tg_vph=tg_vph, fb_eph=fb_eph,
              parts=parts,
              fresh=0.5 ** (max(0, NOW - max(a["ts"] for a in c["items"])) / 3600 / C.HALF_LIFE_H))
@@ -409,7 +423,9 @@ def render(c):
     if c["in_gnews"]:
         sig.append("🔝 Google News")
     if c["trend"]:
-        sig.append(f"📈 Trend “{e(c['trend']['term'])}” {fmt_num(c['trend']['traffic'])}+ searches")
+        where = ", ".join(c["countries"])
+        sig.append(f"📈 Trending “{e(c['trend']['term'])}” {fmt_num(c['trend']['traffic'])}+ searches"
+                   f" ({where})")
     if c["yt_vph"] >= 1:
         sig.append(f"▶️ {fmt_num(c['yt_vph'])} YouTube views/hr")
     if c["tg_vph"] >= 1:
@@ -428,7 +444,8 @@ def render(c):
             others.append(a)
     more = "\n".join(f"• <a href=\"{e(a['link'])}\">{e(a.get('outlet') or a['source'])}</a>"
                      for a in others)
-    return (f"🔥 <b>Viral score: {c['score']:.2f}/10</b>\n\n"
+    lane = "🌍 International" if c.get("intl") else "🇧🇩 Bangladesh"
+    return (f"🔥 <b>Viral score: {c['score']:.2f}/10</b> · {lane}\n\n"
             f"<b>{e(lead['title'])}</b>\n\n" + " · ".join(sig) + "\n\n"
             f"{e(lead['link'])}" + (f"\n\nAlso covered by:\n{more}" if more else ""))
 
@@ -505,23 +522,28 @@ def run(dry=False, top=15):
         # topic-level dedup: skip near-same angles of a story already posted
         return any(overlap(c["toks"], set(p["toks"])) >= C.DEDUP_OVERLAP for p in posted.values())
 
-    sent = 0
-    for i, c in enumerate(clusters[:top], 1):
-        dup = already(c)
-        p = {k: round(v, 1) for k, v in c["parts"].items() if v}
-        log(f"{i:2}. {c['score']:5.2f} {'(posted) ' if dup else ''}{pick_link(c)['title'][:70]}  {p}")
+    for lane_intl in (False, True):
+        lane = [c for c in clusters if c["intl"] == lane_intl]
+        log(f"--- {'International' if lane_intl else 'Bangladesh'} top ---")
+        for i, c in enumerate(lane[:top], 1):
+            p = {k: round(v, 1) for k, v in c["parts"].items() if v}
+            log(f"{i:2}. {c['score']:5.2f} {'(posted) ' if already(c) else ''}"
+                f"{pick_link(c)['title'][:70]}  {p}")
+
+    sent = {False: 0, True: 0}
+    limit = {False: (C.MAX_POSTS_PER_RUN, C.MIN_SCORE),
+             True: (C.INTL_MAX_POSTS_PER_RUN, C.INTL_MIN_SCORE)}
     for c in clusters:
-        if sent >= C.MAX_POSTS_PER_RUN or c["score"] < C.MIN_SCORE:
-            break
-        if already(c):
+        cap, floor = limit[c["intl"]]
+        if sent[c["intl"]] >= cap or c["score"] < floor or already(c):
             continue
         if dry:
             print(render(c), "\n" + "-" * 60)
         elif not send(render(c)):
             continue
         posted[story_key(c)] = {"at": NOW, "toks": sorted(c["toks"]), "score": c["score"]}
-        sent += 1
-    log(f"{'would post' if dry else 'posted'} {sent} stories")
+        sent[c["intl"]] += 1
+    log(f"{'would post' if dry else 'posted'} {sent[False]} Bangladesh + {sent[True]} international")
 
     state["coverage"] = {story_key(c): c["cov"] for c in clusters if c["cov"] > 1}
     state["page_cache"] = {u: m for u, m in page_cache.items()      # keep 3 days

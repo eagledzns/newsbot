@@ -1,7 +1,7 @@
 name: viral-news-bot
 on:
   schedule:
-    - cron: "*/20 * * * *"   # every 20 min (GitHub may delay a few minutes)
+    - cron: "*/10 * * * *"   # every 10 min (GitHub may delay a few minutes)
   workflow_dispatch: {}
   push:                      # also run right after code/config changes
     branches: [main]
