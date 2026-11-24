@@ -140,12 +140,12 @@ HALF_LIFE_H  = 5.0   # freshness: score halves every N hours since last update
 SCALE        = 8.0   # 0-10 squashing; higher = harder to reach 10
 
 # ---- Posting rules --------------------------------------------------------
-MIN_SCORE         = 6.0   # only post stories scoring at least this (0-10)
+MIN_SCORE         = 5.5   # only post stories scoring at least this (0-10)
 MAX_POSTS_PER_RUN = 3     # Bangladesh stories per run (runs every 5 min)
 # International lane: world stories get their own slots so local news
 # can't crowd them out.
-INTL_MIN_SCORE         = 6.0
-INTL_MAX_POSTS_PER_RUN = 2
+INTL_MIN_SCORE         = 5.5
+INTL_MAX_POSTS_PER_RUN = 3
 MAX_AGE_HOURS     = 24
 REPOST_GAP_HOURS  = 48    # don't post the same story again within this window
 DEDUP_OVERLAP     = 0.35  # lower = stricter "same topic" filter (0.3-0.6)
