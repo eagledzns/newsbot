@@ -1,0 +1,30 @@
+name: viral-news-bot
+on:
+  schedule:
+    - cron: "*/20 * * * *"   # every 20 min (GitHub may delay a few minutes)
+  workflow_dispatch: {}
+permissions:
+  contents: write
+concurrency: newsbot
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11", cache: pip }
+      - run: pip install -r requirements.txt
+      - run: python bot.py --once
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+          FB_APP_ID:          ${{ secrets.FB_APP_ID }}
+          FB_APP_SECRET:      ${{ secrets.FB_APP_SECRET }}
+          FB_PAGE_TOKEN:      ${{ secrets.FB_PAGE_TOKEN }}
+      - name: Save memory of posted stories
+        run: |
+          git config user.name "newsbot"
+          git config user.email "newsbot@users.noreply.github.com"
+          git add state.json
+          git diff --cached --quiet || git commit -m "update state [skip ci]"
+          git push
