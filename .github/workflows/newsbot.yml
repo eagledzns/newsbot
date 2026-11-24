@@ -3,6 +3,9 @@ on:
   schedule:
     - cron: "*/20 * * * *"   # every 20 min (GitHub may delay a few minutes)
   workflow_dispatch: {}
+  push:                      # also run right after code/config changes
+    branches: [main]
+    paths-ignore: [state.json]
 permissions:
   contents: write
 concurrency: newsbot
@@ -17,7 +20,7 @@ jobs:
       - run: python bot.py --once
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_CHAT_ID:   "-1004429348503"   # "News update" group (not secret)
           FB_APP_ID:          ${{ secrets.FB_APP_ID }}
           FB_APP_SECRET:      ${{ secrets.FB_APP_SECRET }}
           FB_PAGE_TOKEN:      ${{ secrets.FB_PAGE_TOKEN }}
