@@ -305,6 +305,36 @@ def get_own_posts():
             for p in get_facebook_page(name, pid, tok, edge="published_posts"):
                 p["own"] = True
                 out.append(p)
+            out += get_own_instagram(name, pid, tok)
+    return out
+
+
+def get_own_instagram(name, page_id, token):
+    """Recent posts of the Instagram professional account linked to your Page."""
+    g = "https://graph.facebook.com/v21.0"
+    try:
+        ig = requests.get(f"{g}/{page_id}", timeout=20, params={
+            "fields": "instagram_business_account", "access_token": token}).json()
+        ig_id = (ig.get("instagram_business_account") or {}).get("id")
+        if not ig_id:
+            return []
+        r = requests.get(f"{g}/{ig_id}/media", timeout=20, params={
+            "fields": "caption,timestamp,permalink,like_count,comments_count",
+            "limit": 20, "access_token": token}).json()
+    except Exception as e:
+        log(f"[skip] instagram {name}: {e}")
+        return []
+    out = []
+    for m in r.get("data", []):
+        cap = clean_title(m.get("caption", ""))
+        t = time.mktime(time.strptime(m["timestamp"][:19], "%Y-%m-%dT%H:%M:%S")) - time.timezone
+        age_h = max((NOW - t) / 3600, 0.5)
+        if not cap or age_h > C.MAX_AGE_HOURS:
+            continue
+        eng = m.get("like_count", 0) + m.get("comments_count", 0)
+        out.append({"source": f"{name} (Instagram)", "kind": "ig", "own": True,
+                    "title": cap[:160], "eng": eng, "link": m.get("permalink", ""),
+                    "ts": t, "vph": eng / age_h})
     return out
 
 
