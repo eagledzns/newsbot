@@ -160,7 +160,7 @@ WIKI_MIN_VIEWS_BN        = 800      # daily reads on Bangla Wikipedia
 WIKI_MIN_VIEWS_EN        = 100000   # daily reads on English Wikipedia
 WIKI_MIN_SPIKE           = 2.5      # x more reads than the day before
 # Trending searches to ignore (sports fixtures like "celta vs bournemouth")
-TREND_SKIP = r"\bvs\.?\b|\bv\b|\bscore\b|\blive\b|\bhighlights\b|\bweather\b|\bresult\b"
+TREND_SKIP = r"canl[iı]|izle|\bvs\.?\b|\bv\b|\bscore\b|\blive\b|\bhighlights\b|\bweather\b|\bresult\b"
 
 # Headlines to ignore (bulletins, roundups, live streams). Regex, case-insensitive.
 JUNK_TITLES = [
