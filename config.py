@@ -110,7 +110,54 @@ SOCIAL_PAGES = [
     {"name": "The Noiseless News",  "tier": "B", "fb": "thenoiselessnews"},
     {"name": "Blinkworthy",         "tier": "B", "fb": "blinkworthy"},
     {"name": "Get the Fame",        "tier": "B", "fb": "getthefame"},
+
+    # ---- Bangladeshi mainstream media Facebook Pages ----------------------
+    # "fb" = Page username (facebook.com/<this>). Names that match SOURCES
+    # count as the same outlet. Unverified usernames are checked automatically
+    # once Meta grants Page Public Content Access; wrong ones are just skipped.
+    # Newspapers / portals
+    {"name": "Prothom Alo",           "tier": "S", "fb": "DailyProthomAlo"},
+    {"name": "The Daily Star",        "tier": "S", "fb": "dailystarnews"},
+    {"name": "The Business Standard", "tier": "S", "fb": "tbsnewsdotnet"},
+    {"name": "Ittefaq",               "tier": "S", "fb": "ittefaq"},
+    {"name": "Kaler Kantho",          "tier": "A", "fb": "kalerkantho"},
+    {"name": "Jugantor",              "tier": "A", "fb": "DailyJugantor"},
+    {"name": "Samakal",               "tier": "A", "fb": "samakaldaily"},
+    {"name": "Dhaka Tribune",         "tier": "A", "fb": "DhakaTribune"},
+    {"name": "Bangla Tribune",        "tier": "A", "fb": "banglatribune"},
+    {"name": "Dhaka Post",            "tier": "A", "fb": "dhakapostofficial"},
+    {"name": "Jago News",             "tier": "A", "fb": "jagonews24"},
+    {"name": "bdnews24",              "tier": "A", "fb": "bdnews24"},
+    {"name": "Desh Rupantor",         "tier": "B", "fb": "deshrupantor"},
+    {"name": "Naya Diganta",          "tier": "B", "fb": "dailynayadiganta"},
+    {"name": "Daily Inqilab",         "tier": "B", "fb": "dailyinqilab"},
+    {"name": "Manab Zamin",           "tier": "B", "fb": "dailymanabzamin"},
+    {"name": "The Daily Campus",      "tier": "B", "fb": "thedailycampus"},
+    {"name": "Daily Waadaa",          "tier": "S", "fb": "dailywaadaa"},
+    # TV channels
+    {"name": "Somoy TV",              "tier": "A", "fb": "somoynews.tv"},
+    {"name": "Jamuna TV",             "tier": "A", "fb": "JamunaTelevision"},
+    {"name": "Independent TV",        "tier": "S", "fb": "itvbd"},
+    {"name": "DBC News",              "tier": "S", "fb": "dbcnewsbd"},
+    {"name": "Channel 24",            "tier": "A", "fb": "channel24digital"},
+    {"name": "Ekattor TV",            "tier": "A", "fb": "ekattortv"},
+    {"name": "Maasranga News",        "tier": "A", "fb": "maasrangatv"},
+    {"name": "NTV",                   "tier": "B", "fb": "ntvbd"},
+    {"name": "RTV",                   "tier": "B", "fb": "rtvonline"},
+    {"name": "ATN News",              "tier": "B", "fb": "atnnewsltd"},
+    {"name": "Channel i",             "tier": "B", "fb": "channelionline"},
+    {"name": "Ekushey TV",            "tier": "B", "fb": "ekusheytv"},
+    {"name": "News24",                "tier": "B", "fb": "news24bd.tv"},
+    # International Bangla services
+    {"name": "BBC Bangla",            "tier": "INT", "fb": "BBCBengaliService"},
+    {"name": "DW Bangla",             "tier": "INT", "fb": "dw.bengali"},
+    {"name": "VOA Bangla",            "tier": "INT", "fb": "VOABangla"},
 ]
+
+# Viral Facebook post detection (needs Page Public Content Access from Meta)
+FB_VIRAL_MULT     = 3.0    # post engagement >= this x the Page's usual (median)
+FB_VIRAL_MIN_ENG  = 2000   # ...and at least this many reactions+comments+2*shares
+FB_VIRAL_MAX_AGE  = 12     # hours
 # Your OWN Pages (read with permanent tokens from FB_PAGE_TOKENS, made by
 # fb_token.py). Alerts get "✅ Already on <Page>" when you've covered a story.
 OWN_PAGES = {

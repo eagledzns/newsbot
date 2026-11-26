@@ -26,6 +26,7 @@ UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.3
       "Accept-Language": "en-US,en;q=0.9,bn;q=0.8"}
 NOW = time.time()
 JUNK = re.compile("|".join(C.JUNK_TITLES), re.I)
+FB_ERR = {}
 
 
 def load_env():
@@ -275,19 +276,28 @@ def get_facebook_page(name, page_id, token, edge="posts"):
         if r.get("error", {}).get("code") != 10:
             break
     if "error" in r:
-        log(f"[skip] facebook {name}: {r['error'].get('message', '')[:120]}")
+        FB_ERR["code"] = r["error"].get("code")
+        FB_ERR["msg"] = r["error"].get("message", "")[:120]
+        if edge != "posts" or FB_ERR["code"] != 10:   # #10 is logged once by get_social
+            log(f"[skip] facebook {name}: {FB_ERR['msg']}")
         return []
-    out = []
+    posts = []
     for p in r.get("data", []):
-        msg = clean_title(p.get("message", ""))
-        t = time.mktime(time.strptime(p["created_time"][:19], "%Y-%m-%dT%H:%M:%S")) - time.timezone
-        age_h = max((NOW - t) / 3600, 0.5)
-        if not msg or age_h > C.MAX_AGE_HOURS:
-            continue
         eng = (p.get("reactions", {}).get("summary", {}).get("total_count", 0)
                + p.get("comments", {}).get("summary", {}).get("total_count", 0)
                + 2 * (p.get("shares") or {}).get("count", 0))
+        t = time.mktime(time.strptime(p["created_time"][:19], "%Y-%m-%dT%H:%M:%S")) - time.timezone
+        posts.append((p, eng, t))
+    engs = sorted(e for _, e, _ in posts)
+    median = engs[len(engs) // 2] if engs else 0        # this Page's usual engagement
+    out = []
+    for p, eng, t in posts:
+        msg = clean_title(p.get("message", ""))
+        age_h = max((NOW - t) / 3600, 0.5)
+        if not msg or age_h > C.MAX_AGE_HOURS:
+            continue
         out.append({"source": name, "kind": "fb", "title": msg[:160], "eng": eng,
+                    "page_median": median, "age_h": age_h,
                     "link": p.get("permalink_url", ""), "ts": t, "vph": eng / age_h})
     return out
 
@@ -339,13 +349,24 @@ def get_own_instagram(name, page_id, token):
 
 
 def get_social():
-    token = os.environ.get("FB_PAGE_TOKEN")
-    items = []
+    # any of our tokens works once Meta grants Page Public Content Access
+    token = os.environ.get("FB_PAGE_TOKEN") or next(
+        (p.split(":", 1)[1] for p in os.environ.get("FB_PAGE_TOKENS", "").split(",") if ":" in p), None)
+    items, fb_blocked, fb_pages = [], False, 0
     for s in C.SOCIAL_PAGES:
         if s.get("tg"):
             items += get_telegram(s["name"], s["tg"])
-        if s.get("fb") and token:
-            items += get_facebook_page(s["name"], s["fb"], token)
+        if s.get("fb") and token and not fb_blocked:
+            got = get_facebook_page(s["name"], s["fb"], token)
+            fb_pages += bool(got)
+            items += got
+            if not got and FB_ERR.get("code") == 10:     # no Page Public Content Access yet
+                fb_blocked = True
+    n_fb = sum(1 for s in C.SOCIAL_PAGES if s.get("fb"))
+    if fb_blocked:
+        log(f"[facebook] {n_fb} media Pages waiting for Meta's Page Public Content Access approval")
+    elif token:
+        log(f"[facebook] read {fb_pages}/{n_fb} media Pages")
     return items
 
 
@@ -504,18 +525,24 @@ def wiki_top(project, day):
 def get_wiki_spikes(state):
     """Pages whose daily Wikipedia readership jumped. Computed once a day."""
     import datetime as dt
-    day = dt.date.today() - dt.timedelta(days=1)
     cache = state.get("wiki", {})
-    if cache.get("date") == str(day):
+    yesterday = dt.date.today() - dt.timedelta(days=1)
+    if cache.get("date") == str(yesterday):
         return cache["items"]
-    items = []
+    items, ok, day = [], False, yesterday
     for proj, lang, min_views in (("bn.wikipedia", "bn", C.WIKI_MIN_VIEWS_BN),
                                   ("en.wikipedia", "en", C.WIKI_MIN_VIEWS_EN)):
-        try:
-            today, before = wiki_top(proj, day), wiki_top(proj, day - dt.timedelta(days=1))
-        except Exception as e:
-            log(f"[skip] wikipedia {lang}: {e}")
+        today = None
+        for d in (yesterday, yesterday - dt.timedelta(days=1)):   # yesterday may not be published yet
+            try:
+                today, before, day = wiki_top(proj, d), wiki_top(proj, d - dt.timedelta(days=1)), d
+                break
+            except Exception:
+                continue
+        if today is None:
+            log(f"[skip] wikipedia {lang}: no recent data yet")
             continue
+        ok = ok or day == yesterday
         floor = min(before.values()) if before else 1
         for art, views in list(today.items())[:200]:
             if views < min_views or WIKI_SKIP.search(art):
@@ -525,7 +552,8 @@ def get_wiki_spikes(state):
                 items.append({"title": art.replace("_", " "), "views": views,
                               "ratio": round(min(ratio, 10), 1), "lang": lang,
                               "link": f"https://{lang}.wikipedia.org/wiki/{art}"})
-    state["wiki"] = {"date": str(day), "items": items}
+    if ok:   # cache only once yesterday's data is out; otherwise retry next scan
+        state["wiki"] = {"date": str(yesterday), "items": items}
     return items
 
 
@@ -579,6 +607,17 @@ def find_viral_topics(trends, videos, clusters, state):
         topics.append({"kind": "video", "title": v["title"], "score": squash(2 * math.log10(v["vph"])),
                        "toks": v["toks"], "vph": v["vph"], "views": v.get("views", 0),
                        "link": v["link"], "source": v["source"]})
+    # 4) Facebook posts from media Pages doing far better than that Page's usual
+    for v in videos:
+        if v["kind"] != "fb" or v.get("own") or v.get("age_h", 99) > C.FB_VIRAL_MAX_AGE:
+            continue
+        ratio = v["eng"] / max(v.get("page_median", 0), 1)
+        if v["eng"] < C.FB_VIRAL_MIN_ENG or ratio < C.FB_VIRAL_MULT:
+            continue
+        raw = 1.5 * math.log10(v["eng"]) + 2 * math.log2(min(ratio, 16))
+        topics.append({"kind": "fb", "title": v["title"], "score": squash(raw),
+                       "toks": v["toks"], "eng": v["eng"], "ratio": round(ratio, 1),
+                       "age_h": v["age_h"], "link": v["link"], "source": v["source"]})
     topics.sort(key=lambda t: t["score"], reverse=True)
     return topics
 
@@ -590,7 +629,7 @@ def topic_key(t):
 def render_topic(t):
     e = html.escape
     head = {"trend": "📈 Trending search", "wiki": "📚 Wikipedia spike",
-            "video": "▶️ Viral video"}[t["kind"]]
+            "video": "▶️ Viral video", "fb": "📘 Viral Facebook post"}[t["kind"]]
     lines = [f"🔥 <b>Viral score: {t['score']:.2f}/10</b> · 🔥 Viral Topic · {head}", "",
              f"<b>{e(t['title'])}</b>", ""]
     if t["kind"] == "trend":
@@ -601,9 +640,13 @@ def render_topic(t):
     elif t["kind"] == "wiki":
         lines.append(f"👀 {fmt_num(t['views'])} reads yesterday on "
                      f"{'Bangla' if t['lang'] == 'bn' else 'English'} Wikipedia · ↑{t['ratio']}× vs day before")
+    elif t["kind"] == "fb":
+        lines.append(f"📘 {e(t['source'])} · {fmt_num(t['eng'])} reactions+comments+shares "
+                     f"in {t['age_h']:.0f}h · {t['ratio']}× this Page's usual")
     else:
         lines.append(f"▶️ {fmt_num(t['vph'])} views/hr · {fmt_num(t['views'])} total · {e(t['source'])}")
-    lines.append("💡 Little or no news coverage yet: chance to cover it first")
+    if t["kind"] != "fb":
+        lines.append("💡 Little or no news coverage yet: chance to cover it first")
     if t.get("link"):
         lines += ["", e(t["link"])]
     return "\n".join(lines)
