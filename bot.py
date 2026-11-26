@@ -198,7 +198,9 @@ def get_trends():
             out.append({"term": e.get("title", "").strip(), "geo": geo,
                         "traffic": parse_traffic(e.get("ht_approx_traffic")),
                         "toks": tokens(e.get("title", "")) | tokens(news_titles),
-                        "url": e.get("ht_news_item_url", "")})
+                        "url": e.get("ht_news_item_url", ""),
+                        "news_title": clean_title(news_titles),
+                        "news_source": e.get("ht_news_item_source", "")})
     return out
 
 
@@ -450,6 +452,133 @@ def render(c):
             f"{e(lead['link'])}" + (f"\n\nAlso covered by:\n{more}" if more else ""))
 
 
+# ---------------------------------------------------------------- viral topics
+# Things people are buzzing about that newspapers haven't (fully) covered yet:
+# trending searches, Wikipedia spikes and fast-rising videos.
+WIKI_SKIP = re.compile(r"^(Deaths_in|List_of|Main_Page|প্রধান_পাতা|\d{4}$|\d{4}_in_)|:|"
+                       r"porn|xxx|sex|যৌন|xvideos|onlyfans", re.I)
+
+
+def squash(raw):
+    return round(10 * (1 - math.exp(-raw / C.SCALE)), 2)
+
+
+def wiki_top(project, day):
+    u = (f"https://wikimedia.org/api/rest_v1/metrics/pageviews/top/{project}/all-access/"
+         f"{day:%Y/%m/%d}")
+    r = requests.get(u, timeout=25, headers={"User-Agent": "ViralNewsScout/1.0 (news trend bot)"})
+    r.raise_for_status()
+    return {a["article"]: a["views"] for a in r.json()["items"][0]["articles"]}
+
+
+def get_wiki_spikes(state):
+    """Pages whose daily Wikipedia readership jumped. Computed once a day."""
+    import datetime as dt
+    day = dt.date.today() - dt.timedelta(days=1)
+    cache = state.get("wiki", {})
+    if cache.get("date") == str(day):
+        return cache["items"]
+    items = []
+    for proj, lang, min_views in (("bn.wikipedia", "bn", C.WIKI_MIN_VIEWS_BN),
+                                  ("en.wikipedia", "en", C.WIKI_MIN_VIEWS_EN)):
+        try:
+            today, before = wiki_top(proj, day), wiki_top(proj, day - dt.timedelta(days=1))
+        except Exception as e:
+            log(f"[skip] wikipedia {lang}: {e}")
+            continue
+        floor = min(before.values()) if before else 1
+        for art, views in list(today.items())[:200]:
+            if views < min_views or WIKI_SKIP.search(art):
+                continue
+            ratio = views / before.get(art, floor)
+            if ratio >= C.WIKI_MIN_SPIKE:
+                items.append({"title": art.replace("_", " "), "views": views,
+                              "ratio": round(min(ratio, 10), 1), "lang": lang,
+                              "link": f"https://{lang}.wikipedia.org/wiki/{art}"})
+    state["wiki"] = {"date": str(day), "items": items}
+    return items
+
+
+def find_viral_topics(trends, videos, clusters, state):
+    covered = [c for c in clusters if c["cov"] >= 2]
+
+    def is_covered(toks, text=""):
+        return any(overlap(toks, c["toks"]) >= 0.5 or
+                   (len(text) > 3 and text.lower() in " ".join(a["title"].lower() for a in c["items"]))
+                   for c in covered)
+
+    topics = []
+    # 1) trending searches with little/no news coverage yet
+    by_term = {}
+    for t in trends:
+        term = t["term"].strip()
+        if not term or C.TREND_SKIP and re.search(C.TREND_SKIP, term, re.I):
+            continue
+        g = by_term.setdefault(term.lower(), {**t, "geos": set(), "traffic": 0})
+        g["geos"].add(t["geo"])
+        g["traffic"] = max(g["traffic"], t["traffic"])
+    for g in by_term.values():
+        if is_covered(g["toks"], g["term"]):
+            continue
+        raw = 2 * math.log10(max(g["traffic"], 10)) + 0.8 * (len(g["geos"]) - 1)
+        topics.append({"kind": "trend", "title": g["term"], "score": squash(raw),
+                       "toks": tokens(g["term"]) | tokens(g.get("news_title", "")),
+                       "geos": sorted(g["geos"]), "traffic": g["traffic"],
+                       "link": g.get("url", ""), "news_title": g.get("news_title", ""),
+                       "news_source": g.get("news_source", "")})
+    # 2) Wikipedia readership spikes
+    for w in get_wiki_spikes(state):
+        toks = tokens(w["title"])
+        if is_covered(toks):
+            continue
+        if w["lang"] == "en":   # global page: needs a regional signal to be relevant
+            regional = any(t["geo"] not in ("US", "GB") and overlap(toks, t["toks"]) >= 0.5
+                           for t in trends) or any(
+                overlap(toks, c["toks"]) >= 0.5 and
+                any(TIER.get(outlet(a)) in ("S", "A", "B") for a in c["items"])
+                for c in clusters)
+            if not regional:
+                continue
+        raw = 1.5 * math.log10(w["views"]) + 1.5 * math.log2(w["ratio"])
+        topics.append({"kind": "wiki", "title": w["title"], "score": squash(raw),
+                       "toks": toks, **{k: w[k] for k in ("views", "ratio", "lang", "link")}})
+    # 3) fast-rising videos not tied to a covered story
+    for v in videos:
+        if v["kind"] != "yt" or v["vph"] < C.VIRAL_VIDEO_MIN_VPH or is_covered(v["toks"]):
+            continue
+        topics.append({"kind": "video", "title": v["title"], "score": squash(2 * math.log10(v["vph"])),
+                       "toks": v["toks"], "vph": v["vph"], "views": v.get("views", 0),
+                       "link": v["link"], "source": v["source"]})
+    topics.sort(key=lambda t: t["score"], reverse=True)
+    return topics
+
+
+def topic_key(t):
+    return "vt:" + hashlib.md5(t["title"].lower().encode()).hexdigest()[:12]
+
+
+def render_topic(t):
+    e = html.escape
+    head = {"trend": "📈 Trending search", "wiki": "📚 Wikipedia spike",
+            "video": "▶️ Viral video"}[t["kind"]]
+    lines = [f"🔥 <b>Viral score: {t['score']:.2f}/10</b> · 🔥 Viral Topic · {head}", "",
+             f"<b>{e(t['title'])}</b>", ""]
+    if t["kind"] == "trend":
+        lines.append(f"🔎 {fmt_num(t['traffic'])}+ searches · trending in {', '.join(t['geos'])}")
+        if t["news_title"]:
+            lines.append(f"📰 Related: {e(t['news_title'])}"
+                         + (f" ({e(t['news_source'])})" if t["news_source"] else ""))
+    elif t["kind"] == "wiki":
+        lines.append(f"👀 {fmt_num(t['views'])} reads yesterday on "
+                     f"{'Bangla' if t['lang'] == 'bn' else 'English'} Wikipedia · ↑{t['ratio']}× vs day before")
+    else:
+        lines.append(f"▶️ {fmt_num(t['vph'])} views/hr · {fmt_num(t['views'])} total · {e(t['source'])}")
+    lines.append("💡 Little or no news coverage yet: chance to cover it first")
+    if t.get("link"):
+        lines += ["", e(t["link"])]
+    return "\n".join(lines)
+
+
 def send(text):
     token, chat = os.environ.get("TELEGRAM_BOT_TOKEN"), os.environ.get("TELEGRAM_CHAT_ID")
     if not token or not chat:
@@ -544,6 +673,26 @@ def run(dry=False, top=15):
         posted[story_key(c)] = {"at": NOW, "toks": sorted(c["toks"]), "score": c["score"]}
         sent[c["intl"]] += 1
     log(f"{'would post' if dry else 'posted'} {sent[False]} Bangladesh + {sent[True]} international")
+
+    # viral topics lane
+    topics = find_viral_topics(trends, videos, clusters, state)
+    log("--- Viral topics top ---")
+    for i, t in enumerate(topics[:10], 1):
+        log(f"{i:2}. {t['score']:5.2f} [{t['kind']}] {t['title'][:70]}")
+    vsent = 0
+    for t in topics:
+        if vsent >= C.VIRAL_MAX_POSTS_PER_RUN or t["score"] < C.VIRAL_MIN_SCORE:
+            break
+        if topic_key(t) in posted or any(overlap(t["toks"], set(p["toks"])) >= 0.6
+                                         for p in posted.values()):
+            continue
+        if dry:
+            print(render_topic(t), "\n" + "-" * 60)
+        elif not send(render_topic(t)):
+            continue
+        posted[topic_key(t)] = {"at": NOW, "toks": sorted(t["toks"]), "score": t["score"]}
+        vsent += 1
+    log(f"{'would post' if dry else 'posted'} {vsent} viral topics")
 
     state["coverage"] = {story_key(c): c["cov"] for c in clusters if c["cov"] > 1}
     state["page_cache"] = {u: m for u, m in page_cache.items()      # keep 3 days

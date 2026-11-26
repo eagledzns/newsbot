@@ -150,6 +150,18 @@ MAX_AGE_HOURS     = 24
 REPOST_GAP_HOURS  = 48    # don't post the same story again within this window
 DEDUP_OVERLAP     = 0.35  # lower = stricter "same topic" filter (0.3-0.6)
 
+# ---- Viral Topics lane -----------------------------------------------------
+# Buzz that news outlets haven't (fully) covered yet: trending searches,
+# Wikipedia readership spikes and fast-rising videos.
+VIRAL_MIN_SCORE          = 5.5
+VIRAL_MAX_POSTS_PER_RUN  = 2
+VIRAL_VIDEO_MIN_VPH      = 5000     # YouTube views per hour to count as viral
+WIKI_MIN_VIEWS_BN        = 800      # daily reads on Bangla Wikipedia
+WIKI_MIN_VIEWS_EN        = 100000   # daily reads on English Wikipedia
+WIKI_MIN_SPIKE           = 2.5      # x more reads than the day before
+# Trending searches to ignore (sports fixtures like "celta vs bournemouth")
+TREND_SKIP = r"\bvs\.?\b|\bv\b|\bscore\b|\blive\b|\bhighlights\b|\bweather\b|\bresult\b"
+
 # Headlines to ignore (bulletins, roundups, live streams). Regex, case-insensitive.
 JUNK_TITLES = [
     r"daily news brief", r"morning update", r"evening update", r"news ?(update|bulletin)",
