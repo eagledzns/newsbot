@@ -278,7 +278,7 @@ def get_facebook_page(name, page_id, token, edge="posts"):
     if "error" in r:
         FB_ERR["code"] = r["error"].get("code")
         FB_ERR["msg"] = r["error"].get("message", "")[:120]
-        if edge != "posts" or FB_ERR["code"] != 10:   # #10 is logged once by get_social
+        if edge != "posts" or FB_ERR["code"] not in (10, 190):   # logged once by get_social
             log(f"[skip] facebook {name}: {FB_ERR['msg']}")
         return []
     posts = []
@@ -350,8 +350,8 @@ def get_own_instagram(name, page_id, token):
 
 def get_social():
     # any of our tokens works once Meta grants Page Public Content Access
-    token = os.environ.get("FB_PAGE_TOKEN") or next(
-        (p.split(":", 1)[1] for p in os.environ.get("FB_PAGE_TOKENS", "").split(",") if ":" in p), None)
+    token = next((p.split(":", 1)[1] for p in os.environ.get("FB_PAGE_TOKENS", "").split(",")
+                  if ":" in p), None) or os.environ.get("FB_PAGE_TOKEN")
     items, fb_blocked, fb_pages = [], False, 0
     for s in C.SOCIAL_PAGES:
         if s.get("tg"):
@@ -360,10 +360,12 @@ def get_social():
             got = get_facebook_page(s["name"], s["fb"], token)
             fb_pages += bool(got)
             items += got
-            if not got and FB_ERR.get("code") == 10:     # no Page Public Content Access yet
+            if not got and FB_ERR.get("code") in (10, 190):   # no approval yet / bad token
                 fb_blocked = True
     n_fb = sum(1 for s in C.SOCIAL_PAGES if s.get("fb"))
-    if fb_blocked:
+    if fb_blocked and FB_ERR.get("code") == 190:
+        log(f"[facebook] token problem, skipped {n_fb} media Pages: {FB_ERR.get('msg', '')[:80]}")
+    elif fb_blocked:
         log(f"[facebook] {n_fb} media Pages waiting for Meta's Page Public Content Access approval")
     elif token:
         log(f"[facebook] read {fb_pages}/{n_fb} media Pages")
@@ -652,8 +654,8 @@ def render_topic(t):
     return "\n".join(lines)
 
 
-def send(text):
-    token, chat = os.environ.get("TELEGRAM_BOT_TOKEN"), os.environ.get("TELEGRAM_CHAT_ID")
+def send(text, chat=None):
+    token, chat = os.environ.get("TELEGRAM_BOT_TOKEN"), chat or os.environ.get("TELEGRAM_CHAT_ID")
     if not token or not chat:
         raise SystemExit("Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID (or use --dry-run).")
     r = requests.post(f"https://api.telegram.org/bot{token}/sendMessage", timeout=25, json={
@@ -766,6 +768,13 @@ def run(dry=False, top=15):
         posted[topic_key(t)] = {"at": NOW, "toks": sorted(t["toks"]), "score": t["score"]}
         vsent += 1
     log(f"{'would post' if dry else 'posted'} {vsent} viral topics")
+
+    # 🇺🇸 US video ideas (separate Telegram chat)
+    try:
+        import us_scout
+        us_scout.run(sys.modules[__name__], state, trends, get_wiki_spikes(state), dry)
+    except Exception as e:
+        log(f"[us] error: {e}")
 
     state["coverage"] = {story_key(c): c["cov"] for c in clusters if c["cov"] > 1}
     state["page_cache"] = {u: m for u, m in page_cache.items()      # keep 3 days

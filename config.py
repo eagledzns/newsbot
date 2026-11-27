@@ -209,6 +209,46 @@ WIKI_MIN_SPIKE           = 2.5      # x more reads than the day before
 # Trending searches to ignore (sports fixtures like "celta vs bournemouth")
 TREND_SKIP = r"canl[iı]|izle|\bvs\.?\b|\bv\b|\bscore\b|\blive\b|\bhighlights\b|\bweather\b|\bresult\b"
 
+# ---- 🇺🇸 US video ideas lane (separate Telegram chat) ----------------------
+US_CHAT_ID = "-5258341941"     # "US Viral Video Ideas" group (env TELEGRAM_US_CHAT_ID overrides)
+US_YOUTUBE_CHANNELS = {
+    # news
+    "ABC News":             "UCBi2mrWuNuyYy4gbM6fU18Q",
+    "NBC News":             "UCeY0bbntWzzVIaj2z3QigXg",
+    "CBS News":             "UC8p1vwvWtl6T73JiExfWs1g",
+    "Fox News":             "UCXIJgqnII2ZOINSWNOGFThA",
+    "CNN":                  "UCupvZG-5ko_eiXAupbDfxWw",
+    "Associated Press":     "UC52X5wxOL_s5yw0dQk7NtgA",
+    "Good Morning America": "UCH1oRy1dINbMVp3UFWrKP0w",
+    "Inside Edition":       "UC9k-yiEpRHMNVOnOi_aQK8w",
+    "TMZ":                  "UCK7IIV6Q2junGSdYK3BmZMg",
+    # late night / entertainment
+    "Jimmy Kimmel Live":    "UCa6vGFO9ty8v5KZJXQxdhaw",
+    "The Late Show":        "UCMtFAi84ehTSYSE9XoHefig",
+    "The Tonight Show":     "UC8-Th83bH_thdKZDJCrn88g",
+    "Saturday Night Live":  "UCqFzWxSCi39LnW1JKFR3efg",
+    # sports
+    "NFL":                  "UCDVYQ4Zhbm3S2dlz7P1GBDg",
+    "NBA":                  "UCWJ2lWNubArHWmf3FIHbfcQ",
+    "House of Highlights":  "UCqQo7ewe87aYAe7ub5UqXMw",
+    # creators
+    "MrBeast":              "UCX6OQ3DkcsbYNE6H8uQQuVA",
+    "Dude Perfect":         "UCRijo3ddMTht_IHyNSNXpNQ",
+    "Ryan Trahan":          "UCnmGIkw-KdI0W5siakKPKog",
+    "Veritasium":           "UCHnyfMqiRRG1u-2MsSQLbXA",
+    "Kai Cenat":            "UCvCfpQXRXdJdL07pzTIA6Cw",
+    "IShowSpeed":           "UCWsDFcIhY2DBi3GB5uykGXA",
+}
+US_MIN_SCORE         = 6.0
+US_MAX_POSTS_PER_RUN = 3
+US_MAX_AGE_HOURS     = 48      # only videos from the last 2 days
+US_MIN_VPH           = 20000   # views per hour to count as viral
+US_MIN_SPEED         = 1.5     # pace vs the channel's usual video (per day)
+US_MIN_SEARCHES      = 2000    # Google Trends US searches
+US_MIN_TITLE_WORDS   = 4       # skip vague titles ("turkey gotta be seasoned 😭")
+US_SKIP = (r"\blive\b|livestream|full episode|full broadcast|world news tonight|"
+           r"\bpodcast\b|compilation|\bfull show\b|nightly news")
+
 # Headlines to ignore (bulletins, roundups, live streams). Regex, case-insensitive.
 JUNK_TITLES = [
     r"daily news brief", r"morning update", r"evening update", r"news ?(update|bulletin)",
